@@ -158,11 +158,8 @@ private extension FileSystemScanner {
         let candidateTokens = homebrewCandidateTokens(for: application)
         return caskInfos.first { caskInfo in
             candidateTokens.contains(caskInfo.token.normalizedAppIdentifier)
-                || caskInfo.appNames.contains {
+                && caskInfo.appNames.contains {
                     $0.normalizedAppIdentifier == application.appFileName.normalizedAppIdentifier
-                }
-                || caskInfo.names.contains {
-                    $0.normalizedAppIdentifier == application.name.normalizedAppIdentifier
                 }
         }
     }

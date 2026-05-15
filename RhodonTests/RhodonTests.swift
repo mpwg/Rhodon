@@ -263,6 +263,46 @@ struct RhodonTests {
         #expect(applications.first?.homebrewCaskInfo?.token == "visual-studio-code")
     }
 
+    @MainActor
+    @Test func fileSystemScannerIgnoresPkgOnlyCasksForHomebrewAvailability() async throws {
+        let applicationsURL = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: applicationsURL)
+        }
+
+        try makeApplicationBundle(
+            at: applicationsURL.appending(path: "Packages.app", directoryHint: .isDirectory),
+            name: "Packages",
+            bundleIdentifier: "com.brightstripe.Parcels",
+            version: "2.0.10"
+        )
+
+        let applications = try await FileSystemScanner(
+            applicationDirectories: [applicationsURL],
+            homebrewCaskProvider: StaticHomebrewCaskProvider(
+                caskDirectories: [],
+                caskInfos: [
+                    HomebrewCaskInfo(
+                        token: "packages",
+                        tap: "homebrew/cask",
+                        names: ["Packages"],
+                        description: "Integrated packaging environment",
+                        homepage: "http://s.sudre.free.fr/Software/Packages/about.html",
+                        url: "https://github.com/packagesdev/packages/releases/download/v1.2.11-GM/Packages.dmg",
+                        version: "1.2.11",
+                        installedVersion: nil,
+                        appNames: []
+                    )
+                ]
+            )
+        ).scanInstalledApplications()
+
+        #expect(applications.first?.installedSource == .dmg)
+        #expect(applications.first?.availableSources == [.dmg])
+        #expect(applications.first?.canMigrate == false)
+        #expect(applications.first?.homebrewCaskInfo == nil)
+    }
+
 }
 
 private func makeTemporaryDirectory() throws -> URL {
