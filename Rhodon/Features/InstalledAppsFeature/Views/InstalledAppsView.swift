@@ -1,17 +1,12 @@
 import SwiftUI
 
 struct InstalledAppsView: View {
-    let viewModel: InstalledAppsViewModel
+    @Bindable var viewModel: InstalledAppsViewModel
     @Binding var selectedApplicationID: InstalledApplication.ID?
     let filter: SidebarItem?
 
     private var visibleApps: [InstalledApplication] {
-        switch filter {
-        case .migrationCandidates:
-            viewModel.apps.filter(\.canMigrate)
-        case .installedApps, .none:
-            viewModel.apps
-        }
+        viewModel.visibleApps(for: filter)
     }
 
     var body: some View {
@@ -34,22 +29,33 @@ struct InstalledAppsView: View {
             }
         }
         .navigationTitle(filter?.title ?? SidebarItem.installedApps.title)
+        .searchable(
+            text: $viewModel.searchText,
+            placement: .toolbar,
+            prompt: "Search apps"
+        )
+        .onChange(of: visibleApps.map(\.id)) {
+            synchronizeSelection()
+        }
     }
 
     private var content: some View {
         VStack(alignment: .leading, spacing: DSSpacing.lg) {
             SectionHeader(
                 filter?.title ?? SidebarItem.installedApps.title,
-                subtitle: "\(visibleApps.count) apps ready for review"
+                subtitle: listSubtitle
             )
             .padding(.horizontal, DSSpacing.lg)
             .padding(.top, DSSpacing.lg)
+
+            InstalledAppsFilterBar(viewModel: viewModel)
+                .padding(.horizontal, DSSpacing.lg)
 
             if visibleApps.isEmpty {
                 Spacer()
                 EmptyStateView(
                     title: "No Apps Found",
-                    message: "No applications match the current source view.",
+                    message: "No applications match the current filters.",
                     systemImage: "app.dashed"
                 )
                 Spacer()
@@ -62,6 +68,61 @@ struct InstalledAppsView: View {
                 }
                 .listStyle(.inset)
             }
+        }
+    }
+
+    private var listSubtitle: String {
+        guard viewModel.hasActiveListFilters || filter == .migrationCandidates else {
+            return "\(visibleApps.count) apps ready for review"
+        }
+
+        return "\(visibleApps.count) of \(viewModel.apps.count) apps shown"
+    }
+
+    private func synchronizeSelection() {
+        guard !visibleApps.isEmpty else {
+            selectedApplicationID = nil
+            return
+        }
+
+        if !visibleApps.contains(where: { $0.id == selectedApplicationID }) {
+            selectedApplicationID = visibleApps.first?.id
+        }
+    }
+}
+
+private struct InstalledAppsFilterBar: View {
+    @Bindable var viewModel: InstalledAppsViewModel
+
+    var body: some View {
+        HStack(spacing: DSSpacing.sm) {
+            Picker("Source", selection: $viewModel.sourceFilter) {
+                ForEach(InstalledAppsSourceFilter.allCases) { filter in
+                    Text(filter.title)
+                        .tag(filter)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("Status", selection: $viewModel.statusFilter) {
+                ForEach(InstalledAppsStatusFilter.allCases) { filter in
+                    Text(filter.title)
+                        .tag(filter)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if viewModel.hasActiveListFilters {
+                Button {
+                    viewModel.resetListFilters()
+                } label: {
+                    Label("Reset", systemImage: "xmark.circle")
+                        .font(DSTypography.bodyEmphasized)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            Spacer(minLength: DSSpacing.sm)
         }
     }
 }

@@ -12,6 +12,56 @@ import Foundation
 struct RhodonTests {
 
     @MainActor
+    @Test func installedAppsViewModelFiltersBySearchSourceAndStatus() async throws {
+        let viewModel = InstalledAppsViewModel(
+            catalogService: AppCatalogService(
+                repository: StaticInstalledAppsRepository(
+                    applications: [
+                        makeInstalledApplication(
+                            name: "Raycast",
+                            bundleIdentifier: "com.raycast.macos",
+                            installedSource: .dmg,
+                            canMigrate: true
+                        ),
+                        makeInstalledApplication(
+                            name: "Xcodes",
+                            bundleIdentifier: "com.robotsandpencils.XcodesApp",
+                            installedSource: .brew
+                        ),
+                        makeInstalledApplication(
+                            name: "Immich",
+                            bundleIdentifier: "app.alextran.immich",
+                            installedSource: .appStore,
+                            isIOSApp: true
+                        )
+                    ]
+                )
+            )
+        )
+
+        await viewModel.load()
+
+        #expect(viewModel.visibleApps(for: .installedApps).map(\.name) == ["Raycast", "Xcodes", "Immich"])
+
+        viewModel.searchText = "ray"
+        #expect(viewModel.visibleApps(for: .installedApps).map(\.name) == ["Raycast"])
+
+        viewModel.searchText = ""
+        viewModel.sourceFilter = .brew
+        #expect(viewModel.visibleApps(for: .installedApps).map(\.name) == ["Xcodes"])
+
+        viewModel.sourceFilter = .all
+        viewModel.statusFilter = .iosApp
+        #expect(viewModel.visibleApps(for: .installedApps).map(\.name) == ["Immich"])
+
+        viewModel.statusFilter = .migratable
+        #expect(viewModel.visibleApps(for: .installedApps).map(\.name) == ["Raycast"])
+
+        viewModel.resetListFilters()
+        #expect(viewModel.visibleApps(for: .installedApps).count == 3)
+    }
+
+    @MainActor
     @Test func fileSystemScannerReadsApplicationsFromConfiguredFolders() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer {
@@ -313,6 +363,34 @@ private func makeTemporaryDirectory() throws -> URL {
         withIntermediateDirectories: true
     )
     return directoryURL
+}
+
+@MainActor
+private func makeInstalledApplication(
+    name: String,
+    bundleIdentifier: String,
+    installedSource: InstallSource,
+    canMigrate: Bool = false,
+    isIOSApp: Bool = false
+) -> InstalledApplication {
+    InstalledApplication(
+        name: name,
+        bundleIdentifier: bundleIdentifier,
+        version: "1.0",
+        installedSource: installedSource,
+        availableSources: [installedSource],
+        canMigrate: canMigrate,
+        installPath: "/Applications/\(name).app",
+        isIOSApp: isIOSApp
+    )
+}
+
+private struct StaticInstalledAppsRepository: InstalledAppsRepository {
+    let applications: [InstalledApplication]
+
+    func fetchInstalledApps() async throws -> [InstalledApplication] {
+        applications
+    }
 }
 
 private func makeApplicationBundle(
