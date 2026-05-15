@@ -19,7 +19,18 @@ struct MockInstalledAppsRepository: InstalledAppsRepository {
                 installedSource: .brew,
                 availableSources: [.brew],
                 canMigrate: false,
-                installPath: "/Applications/Xcodes.app"
+                installPath: "/Applications/Xcodes.app",
+                homebrewCaskInfo: HomebrewCaskInfo(
+                    token: "xcodes",
+                    tap: "homebrew/cask",
+                    names: ["Xcodes"],
+                    description: "Install and switch between multiple Xcode versions",
+                    homepage: "https://github.com/XcodesOrg/XcodesApp",
+                    url: "https://github.com/XcodesOrg/XcodesApp/releases/download/v2.5.0/Xcodes.zip",
+                    version: "2.5.0",
+                    installedVersion: "2.5.0",
+                    appNames: ["Xcodes.app"]
+                )
             ),
             InstalledApplication(
                 name: "Linear",

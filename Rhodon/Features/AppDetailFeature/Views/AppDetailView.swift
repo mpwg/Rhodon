@@ -23,6 +23,9 @@ struct AppDetailView: View {
             VStack(alignment: .leading, spacing: DSSpacing.lg) {
                 header(for: application)
                 sourceCard(for: application)
+                if let caskInfo = application.homebrewCaskInfo {
+                    homebrewCard(for: caskInfo)
+                }
                 migrationCard(for: application)
             }
             .padding(DSSpacing.xl)
@@ -81,6 +84,50 @@ struct AppDetailView: View {
         }
     }
 
+    private func homebrewCard(for caskInfo: HomebrewCaskInfo) -> some View {
+        CardView {
+            VStack(alignment: .leading, spacing: DSSpacing.md) {
+                SectionHeader(
+                    "Homebrew Cask",
+                    subtitle: caskInfo.description
+                )
+
+                VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                    MetadataRow(title: "Token", value: caskInfo.token)
+                    MetadataRow(title: "Name", value: caskInfo.displayName)
+                    MetadataRow(title: "Tap", value: caskInfo.tap)
+                    MetadataRow(title: "Version", value: caskInfo.version)
+                    MetadataRow(title: "Installed", value: caskInfo.installedVersion)
+                    MetadataRow(title: "Download", value: caskInfo.url)
+
+                    if let url = caskInfo.homebrewPageURL {
+                        LabeledContent("Homebrew Page") {
+                            Link(url.absoluteString, destination: url)
+                                .font(DSTypography.body)
+                        }
+                    }
+
+                    if let homepage = caskInfo.homepage, let url = URL(string: homepage) {
+                        LabeledContent("Homepage") {
+                            Link(homepage, destination: url)
+                                .font(DSTypography.body)
+                        }
+                    }
+
+                    if !caskInfo.appNames.isEmpty {
+                        LabeledContent("Artifacts") {
+                            Text(caskInfo.appNames.joined(separator: ", "))
+                                .font(DSTypography.body)
+                                .foregroundStyle(DSColor.primaryText)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                }
+                .font(DSTypography.body)
+            }
+        }
+    }
+
     private func migrationCard(for application: InstalledApplication) -> some View {
         CardView {
             HStack(spacing: DSSpacing.md) {
@@ -97,6 +144,22 @@ struct AppDetailView: View {
                         .font(DSTypography.body)
                         .foregroundStyle(DSColor.secondaryText)
                 }
+            }
+        }
+    }
+}
+
+private struct MetadataRow: View {
+    let title: String
+    let value: String?
+
+    var body: some View {
+        if let value, !value.isEmpty {
+            LabeledContent(title) {
+                Text(value)
+                    .font(DSTypography.body)
+                    .foregroundStyle(DSColor.primaryText)
+                    .multilineTextAlignment(.trailing)
             }
         }
     }

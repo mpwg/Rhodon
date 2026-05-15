@@ -200,12 +200,27 @@ struct RhodonTests {
             homebrewCaskProvider: StaticHomebrewCaskProvider(
                 caskDirectories: [
                     caskroomURL.appending(path: "brewlet", directoryHint: .isDirectory)
+                ],
+                caskInfos: [
+                    HomebrewCaskInfo(
+                        token: "brewlet",
+                        tap: "homebrew/cask",
+                        names: ["Brewlet"],
+                        description: "Menu bar helper for Homebrew",
+                        homepage: "https://example.com/brewlet",
+                        url: "https://example.com/brewlet.zip",
+                        version: "1.7.4",
+                        installedVersion: "1.7.4",
+                        appNames: ["Brewlet.app"]
+                    )
                 ]
             )
         ).scanInstalledApplications()
 
         #expect(applications.first?.installedSource == .brew)
         #expect(applications.first?.availableSources == [.brew])
+        #expect(applications.first?.homebrewCaskInfo?.token == "brewlet")
+        #expect(applications.first?.homebrewCaskInfo?.description == "Menu bar helper for Homebrew")
     }
 
 }

@@ -10,6 +10,7 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
     let canMigrate: Bool
     let installPath: String
     let isIOSApp: Bool
+    let homebrewCaskInfo: HomebrewCaskInfo?
 
     init(
         id: String? = nil,
@@ -20,7 +21,8 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
         availableSources: [InstallSource],
         canMigrate: Bool,
         installPath: String,
-        isIOSApp: Bool = false
+        isIOSApp: Bool = false,
+        homebrewCaskInfo: HomebrewCaskInfo? = nil
     ) {
         self.id = id ?? "\(bundleIdentifier)|\(installPath)"
         self.name = name
@@ -31,5 +33,6 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
         self.canMigrate = canMigrate
         self.installPath = installPath
         self.isIOSApp = isIOSApp
+        self.homebrewCaskInfo = homebrewCaskInfo
     }
 }
