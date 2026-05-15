@@ -2,14 +2,14 @@ import Foundation
 
 struct FileSystemScanner: AppScanner {
     private let applicationDirectories: [URL]
-    private let homebrewCaskroomDirectories: [URL]
+    private let homebrewCaskProvider: any HomebrewCaskProviding
 
     init(
         applicationDirectories: [URL] = Self.defaultApplicationDirectories,
-        homebrewCaskroomDirectories: [URL] = Self.defaultHomebrewCaskroomDirectories
+        homebrewCaskProvider: any HomebrewCaskProviding = ShellHomebrewCaskProvider()
     ) {
         self.applicationDirectories = applicationDirectories
-        self.homebrewCaskroomDirectories = homebrewCaskroomDirectories
+        self.homebrewCaskProvider = homebrewCaskProvider
     }
 
     func scanInstalledApplications() async throws -> [InstalledApplication] {
@@ -31,13 +31,6 @@ private extension FileSystemScanner {
             URL(filePath: "/Applications", directoryHint: .isDirectory),
             FileManager.default.homeDirectoryForCurrentUser
                 .appending(path: "Applications", directoryHint: .isDirectory)
-        ]
-    }
-
-    static var defaultHomebrewCaskroomDirectories: [URL] {
-        [
-            URL(filePath: "/opt/homebrew/Caskroom", directoryHint: .isDirectory),
-            URL(filePath: "/usr/local/Caskroom", directoryHint: .isDirectory)
         ]
     }
 
@@ -188,7 +181,7 @@ private extension FileSystemScanner {
     }
 
     func homebrewCaskApplications() -> Set<HomebrewCaskApplication> {
-        homebrewCaskroomDirectories.reduce(into: Set<HomebrewCaskApplication>()) { applications, directory in
+        homebrewCaskProvider.installedCaskDirectories().reduce(into: Set<HomebrewCaskApplication>()) { applications, directory in
             applications.formUnion(homebrewCaskApplications(in: directory))
         }
     }
@@ -235,6 +228,73 @@ private extension FileSystemScanner {
         }
 
         return applications
+    }
+}
+
+protocol HomebrewCaskProviding: Sendable {
+    func installedCaskDirectories() -> [URL]
+}
+
+struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
+    func installedCaskDirectories() -> [URL] {
+        guard let caskroomPath = runBrew(arguments: ["--caskroom"]).first else {
+            return []
+        }
+
+        let caskroomURL = URL(filePath: caskroomPath, directoryHint: .isDirectory)
+        return runBrew(arguments: ["list", "--cask"]).map { token in
+            caskroomURL.appending(path: token, directoryHint: .isDirectory)
+        }
+    }
+
+    private func runBrew(arguments: [String]) -> [String] {
+        let process = Process()
+        process.executableURL = URL(filePath: "/bin/zsh", directoryHint: .notDirectory)
+        process.arguments = ["-lc", shellCommand(for: arguments)]
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return []
+        }
+
+        guard process.terminationStatus == .zero else {
+            return []
+        }
+
+        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else {
+            return []
+        }
+
+        return output
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func shellCommand(for arguments: [String]) -> String {
+        (["brew"] + arguments)
+            .map(shellEscaped)
+            .joined(separator: " ")
+    }
+
+    private func shellEscaped(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+}
+
+struct StaticHomebrewCaskProvider: HomebrewCaskProviding {
+    let caskDirectories: [URL]
+
+    func installedCaskDirectories() -> [URL] {
+        caskDirectories
     }
 }
 

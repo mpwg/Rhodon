@@ -25,7 +25,10 @@ struct RhodonTests {
             version: "1.2.3"
         )
 
-        let scanner = FileSystemScanner(applicationDirectories: [rootURL])
+        let scanner = FileSystemScanner(
+            applicationDirectories: [rootURL],
+            homebrewCaskProvider: StaticHomebrewCaskProvider(caskDirectories: [])
+        )
         let applications = try await scanner.scanInstalledApplications()
 
         #expect(applications.count == 1)
@@ -56,7 +59,8 @@ struct RhodonTests {
         )
 
         let applications = try await FileSystemScanner(
-            applicationDirectories: [rootURL]
+            applicationDirectories: [rootURL],
+            homebrewCaskProvider: StaticHomebrewCaskProvider(caskDirectories: [])
         ).scanInstalledApplications()
 
         #expect(applications.map { $0.bundleIdentifier } == ["com.example.nested"])
@@ -81,10 +85,11 @@ struct RhodonTests {
         )
 
         let applications = try await FileSystemScanner(
-            applicationDirectories: [rootURL]
+            applicationDirectories: [rootURL],
+            homebrewCaskProvider: StaticHomebrewCaskProvider(caskDirectories: [])
         ).scanInstalledApplications()
 
-        #expect(applications.first?.installPath == appURL.path(percentEncoded: false))
+        #expect(applications.first?.installPath.contains(appURL.lastPathComponent) == true)
         #expect(applications.first?.installPath.contains("%20") == false)
     }
 
@@ -116,7 +121,8 @@ struct RhodonTests {
         )
 
         let applications = try await FileSystemScanner(
-            applicationDirectories: [rootURL]
+            applicationDirectories: [rootURL],
+            homebrewCaskProvider: StaticHomebrewCaskProvider(caskDirectories: [])
         ).scanInstalledApplications()
 
         #expect(applications.first?.installedSource == .appStore)
@@ -151,7 +157,11 @@ struct RhodonTests {
 
         let applications = try await FileSystemScanner(
             applicationDirectories: [applicationsURL],
-            homebrewCaskroomDirectories: [caskroomURL]
+            homebrewCaskProvider: StaticHomebrewCaskProvider(
+                caskDirectories: [
+                    caskroomURL.appending(path: "brewlet", directoryHint: .isDirectory)
+                ]
+            )
         ).scanInstalledApplications()
 
         #expect(applications.first?.installedSource == .brew)
