@@ -445,7 +445,7 @@ struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
             return []
         }
 
-        return caskInfos(for: Set(tokens))
+        return caskInfosFromAPI(for: Set(tokens))
     }
 
     func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo] {
@@ -517,18 +517,15 @@ struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
         return decodeHomebrewCaskInfos(from: data)
     }
 
-    private func caskInfos(for tokens: Set<String>) -> [HomebrewCaskInfo] {
+    private func caskInfosFromAPI(for tokens: Set<String>) -> [HomebrewCaskInfo] {
         guard !tokens.isEmpty else {
             return []
         }
 
-        guard let data = runBrewData(
-            arguments: ["info", "--cask", "--json=v2"] + tokens.sorted()
-        ) else {
-            return []
+        let normalizedTokens = Set(tokens.map(\.normalizedAppIdentifier))
+        return allAvailableCaskInfos().filter { caskInfo in
+            normalizedTokens.contains(caskInfo.token.normalizedAppIdentifier)
         }
-
-        return decodeHomebrewCaskInfos(from: data)
     }
 
     private func decodeHomebrewCaskInfos(from data: Data) -> [HomebrewCaskInfo] {
