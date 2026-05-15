@@ -2,14 +2,23 @@ import Foundation
 
 struct FileSystemScanner: AppScanner {
     private let applicationDirectories: [URL]
+    private let homebrewCaskroomDirectories: [URL]
 
-    init(applicationDirectories: [URL] = Self.defaultApplicationDirectories) {
+    init(
+        applicationDirectories: [URL] = Self.defaultApplicationDirectories,
+        homebrewCaskroomDirectories: [URL] = Self.defaultHomebrewCaskroomDirectories
+    ) {
         self.applicationDirectories = applicationDirectories
+        self.homebrewCaskroomDirectories = homebrewCaskroomDirectories
     }
 
     func scanInstalledApplications() async throws -> [InstalledApplication] {
-        try applicationDirectories
-            .flatMap(applications(in:))
+        let homebrewCasks = homebrewCaskApplications()
+
+        return try applicationDirectories
+            .flatMap { directory in
+                try applications(in: directory, homebrewCasks: homebrewCasks)
+            }
             .sorted {
                 $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
@@ -25,7 +34,17 @@ private extension FileSystemScanner {
         ]
     }
 
-    func applications(in directory: URL) throws -> [InstalledApplication] {
+    static var defaultHomebrewCaskroomDirectories: [URL] {
+        [
+            URL(filePath: "/opt/homebrew/Caskroom", directoryHint: .isDirectory),
+            URL(filePath: "/usr/local/Caskroom", directoryHint: .isDirectory)
+        ]
+    }
+
+    func applications(
+        in directory: URL,
+        homebrewCasks: Set<HomebrewCaskApplication>
+    ) throws -> [InstalledApplication] {
         guard FileManager.default.fileExists(atPath: directory.fileSystemPath) else {
             return []
         }
@@ -51,7 +70,7 @@ private extension FileSystemScanner {
                 continue
             }
 
-            if let application = makeApplication(from: url) {
+            if let application = makeApplication(from: url, homebrewCasks: homebrewCasks) {
                 applications.append(application)
             }
 
@@ -61,7 +80,10 @@ private extension FileSystemScanner {
         return applications
     }
 
-    func makeApplication(from appURL: URL) -> InstalledApplication? {
+    func makeApplication(
+        from appURL: URL,
+        homebrewCasks: Set<HomebrewCaskApplication>
+    ) -> InstalledApplication? {
         let info = readInfoPlist(for: appURL)
         let bundleIdentifier = stringValue("CFBundleIdentifier", in: info)
             ?? fallbackBundleIdentifier(for: appURL)
@@ -72,7 +94,12 @@ private extension FileSystemScanner {
         let version = stringValue("CFBundleShortVersionString", in: info)
             ?? stringValue("CFBundleVersion", in: info)
             ?? "Unknown"
-        let source = installedSource(for: appURL)
+        let source = installedSource(
+            for: appURL,
+            bundleIdentifier: bundleIdentifier,
+            name: name,
+            homebrewCasks: homebrewCasks
+        )
         let availableSources = source == .unknown ? [] : [source]
 
         return InstalledApplication(
@@ -118,7 +145,12 @@ private extension FileSystemScanner {
         return "unknown\(path)"
     }
 
-    func installedSource(for appURL: URL) -> InstallSource {
+    func installedSource(
+        for appURL: URL,
+        bundleIdentifier: String,
+        name: String,
+        homebrewCasks: Set<HomebrewCaskApplication>
+    ) -> InstallSource {
         if hasMacAppStoreReceipt(appURL) {
             return .appStore
         }
@@ -131,7 +163,15 @@ private extension FileSystemScanner {
             return .setapp
         }
 
-        if sourcePath.contains("/caskroom/") || sourcePath.contains("/homebrew/") {
+        if sourcePath.contains("/caskroom/")
+            || sourcePath.contains("/homebrew/")
+            || homebrewCasks.contains(
+                HomebrewCaskApplication(
+                    bundleIdentifier: bundleIdentifier,
+                    name: name,
+                    appFileName: appURL.lastPathComponent
+                )
+            ) {
             return .brew
         }
 
@@ -146,10 +186,79 @@ private extension FileSystemScanner {
 
         return FileManager.default.fileExists(atPath: receiptURL.fileSystemPath)
     }
+
+    func homebrewCaskApplications() -> Set<HomebrewCaskApplication> {
+        homebrewCaskroomDirectories.reduce(into: Set<HomebrewCaskApplication>()) { applications, directory in
+            applications.formUnion(homebrewCaskApplications(in: directory))
+        }
+    }
+
+    func homebrewCaskApplications(in directory: URL) -> Set<HomebrewCaskApplication> {
+        guard FileManager.default.fileExists(atPath: directory.fileSystemPath) else {
+            return []
+        }
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        var applications = Set<HomebrewCaskApplication>()
+
+        for case let url as URL in enumerator {
+            guard url.pathExtension == "app" else {
+                continue
+            }
+
+            let info = readInfoPlist(for: url)
+            guard
+                let bundleIdentifier = stringValue("CFBundleIdentifier", in: info),
+                let name = stringValue("CFBundleDisplayName", in: info)
+                    ?? stringValue("CFBundleName", in: info)
+                    ?? stringValue("CFBundleExecutable", in: info)
+            else {
+                enumerator.skipDescendants()
+                continue
+            }
+
+            applications.insert(
+                HomebrewCaskApplication(
+                    bundleIdentifier: bundleIdentifier,
+                    name: name,
+                    appFileName: url.lastPathComponent
+                )
+            )
+            enumerator.skipDescendants()
+        }
+
+        return applications
+    }
 }
 
 private extension URL {
     var fileSystemPath: String {
         path(percentEncoded: false)
+    }
+}
+
+private struct HomebrewCaskApplication: Hashable, Sendable {
+    let bundleIdentifier: String
+    let name: String
+    let appFileName: String
+
+    init(bundleIdentifier: String, name: String, appFileName: String) {
+        self.bundleIdentifier = bundleIdentifier.normalizedAppIdentifier
+        self.name = name.normalizedAppIdentifier
+        self.appFileName = appFileName.normalizedAppIdentifier
+    }
+}
+
+private extension String {
+    var normalizedAppIdentifier: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
 }

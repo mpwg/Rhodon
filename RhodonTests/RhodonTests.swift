@@ -123,6 +123,41 @@ struct RhodonTests {
         #expect(applications.first?.availableSources == [.appStore])
     }
 
+    @MainActor
+    @Test func fileSystemScannerDetectsHomebrewCaskApplications() async throws {
+        let applicationsURL = try makeTemporaryDirectory()
+        let caskroomURL = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: applicationsURL)
+            try? FileManager.default.removeItem(at: caskroomURL)
+        }
+
+        try makeApplicationBundle(
+            at: applicationsURL.appending(path: "Brewlet.app", directoryHint: .isDirectory),
+            name: "Brewlet",
+            bundleIdentifier: "zzada.Brewlet",
+            version: "1.7.4"
+        )
+
+        try makeApplicationBundle(
+            at: caskroomURL
+                .appending(path: "brewlet", directoryHint: .isDirectory)
+                .appending(path: "1.7.4", directoryHint: .isDirectory)
+                .appending(path: "Brewlet.app", directoryHint: .isDirectory),
+            name: "Brewlet",
+            bundleIdentifier: "zzada.Brewlet",
+            version: "1.7.4"
+        )
+
+        let applications = try await FileSystemScanner(
+            applicationDirectories: [applicationsURL],
+            homebrewCaskroomDirectories: [caskroomURL]
+        ).scanInstalledApplications()
+
+        #expect(applications.first?.installedSource == .brew)
+        #expect(applications.first?.availableSources == [.brew])
+    }
+
 }
 
 private func makeTemporaryDirectory() throws -> URL {
