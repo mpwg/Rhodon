@@ -1,7 +1,7 @@
 import Foundation
 
 struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
-    let id: UUID
+    let id: String
     let name: String
     let bundleIdentifier: String
     let version: String
@@ -11,7 +11,7 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
     let installPath: String
 
     init(
-        id: UUID = UUID(),
+        id: String? = nil,
         name: String,
         bundleIdentifier: String,
         version: String,
@@ -20,7 +20,7 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
         canMigrate: Bool,
         installPath: String
     ) {
-        self.id = id
+        self.id = id ?? "\(bundleIdentifier)|\(installPath)"
         self.name = name
         self.bundleIdentifier = bundleIdentifier
         self.version = version

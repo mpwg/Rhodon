@@ -16,5 +16,13 @@ struct AppContainer: Sendable {
         updateService: MockUpdateService()
     )
 
-    static let live = preview
+    static let live = AppContainer(
+        catalogService: AppCatalogService(repository: FileSystemInstalledAppsRepository()),
+        appScanner: FileSystemScanner(),
+        packageManagers: [
+            BrewService(),
+            AppStoreService()
+        ],
+        updateService: MockUpdateService()
+    )
 }
