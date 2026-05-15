@@ -26,6 +26,9 @@ struct AppDetailView: View {
                 if let caskInfo = application.homebrewCaskInfo {
                     homebrewCard(for: caskInfo)
                 }
+                if let metadata = application.appStoreMetadata {
+                    appStoreMetadataCard(for: metadata, application: application)
+                }
                 migrationCard(for: application)
             }
             .padding(DSSpacing.xl)
@@ -128,6 +131,30 @@ struct AppDetailView: View {
         }
     }
 
+    private func appStoreMetadataCard(
+        for metadata: AppStoreMetadata,
+        application: InstalledApplication
+    ) -> some View {
+        CardView {
+            VStack(alignment: .leading, spacing: DSSpacing.md) {
+                SectionHeader(
+                    application.isIOSApp ? "App Store Metadata" : "Mac App Store Metadata",
+                    subtitle: application.isIOSApp ? "iTunes metadata from the wrapped app bundle" : "Receipt and available store metadata"
+                )
+
+                VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                    MetadataRow(title: "Receipt", value: metadata.receiptPath)
+                    MetadataRow(title: "Metadata", value: metadata.metadataPath)
+
+                    ForEach(metadata.items) { item in
+                        MetadataRow(title: item.key, value: item.value)
+                    }
+                }
+                .font(DSTypography.body)
+            }
+        }
+    }
+
     private func migrationCard(for application: InstalledApplication) -> some View {
         CardView {
             HStack(spacing: DSSpacing.md) {
@@ -160,6 +187,7 @@ private struct MetadataRow: View {
                     .font(DSTypography.body)
                     .foregroundStyle(DSColor.primaryText)
                     .multilineTextAlignment(.trailing)
+                    .textSelection(.enabled)
             }
         }
     }

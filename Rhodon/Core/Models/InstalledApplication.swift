@@ -11,6 +11,7 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
     let installPath: String
     let isIOSApp: Bool
     let homebrewCaskInfo: HomebrewCaskInfo?
+    let appStoreMetadata: AppStoreMetadata?
 
     init(
         id: String? = nil,
@@ -22,7 +23,8 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
         canMigrate: Bool,
         installPath: String,
         isIOSApp: Bool = false,
-        homebrewCaskInfo: HomebrewCaskInfo? = nil
+        homebrewCaskInfo: HomebrewCaskInfo? = nil,
+        appStoreMetadata: AppStoreMetadata? = nil
     ) {
         self.id = id ?? "\(bundleIdentifier)|\(installPath)"
         self.name = name
@@ -34,5 +36,25 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
         self.installPath = installPath
         self.isIOSApp = isIOSApp
         self.homebrewCaskInfo = homebrewCaskInfo
+        self.appStoreMetadata = appStoreMetadata
+    }
+}
+
+struct AppStoreMetadata: Codable, Hashable, Sendable {
+    let receiptPath: String?
+    let metadataPath: String?
+    let items: [AppStoreMetadataItem]
+
+    var isEmpty: Bool {
+        receiptPath == nil && metadataPath == nil && items.isEmpty
+    }
+}
+
+struct AppStoreMetadataItem: Codable, Hashable, Identifiable, Sendable {
+    let key: String
+    let value: String
+
+    var id: String {
+        key
     }
 }

@@ -106,6 +106,9 @@ private extension FileSystemScanner {
                 homebrewCasks: homebrewCasks
             )
             : nil
+        let appStoreMetadata = source == .appStore
+            ? appStoreMetadata(for: appURL)
+            : nil
 
         return InstalledApplication(
             name: name,
@@ -116,7 +119,8 @@ private extension FileSystemScanner {
             canMigrate: false,
             installPath: appURL.fileSystemPath,
             isIOSApp: isIOSApp,
-            homebrewCaskInfo: homebrewCaskInfo
+            homebrewCaskInfo: homebrewCaskInfo,
+            appStoreMetadata: appStoreMetadata
         )
     }
 
@@ -183,7 +187,8 @@ private extension FileSystemScanner {
             canMigrate: application.installedSource != .brew,
             installPath: application.installPath,
             isIOSApp: application.isIOSApp,
-            homebrewCaskInfo: caskInfo
+            homebrewCaskInfo: caskInfo,
+            appStoreMetadata: application.appStoreMetadata
         )
     }
 
@@ -295,26 +300,56 @@ private extension FileSystemScanner {
             return true
         }
 
+        return macAppStoreReceiptURL(for: appURL) != nil
+    }
+
+    func appStoreMetadata(for appURL: URL) -> AppStoreMetadata? {
+        let receiptURL = macAppStoreReceiptURL(for: appURL)
+        let metadataURL = iTunesMetadataURL(for: appURL)
+        let metadata = metadataURL.map(readPropertyList(at:)) ?? [:]
+        let items = appStoreMetadataItems(from: metadata)
+        let result = AppStoreMetadata(
+            receiptPath: receiptURL.map(\.fileSystemPath),
+            metadataPath: metadataURL.map(\.fileSystemPath),
+            items: items
+        )
+
+        return result.isEmpty ? nil : result
+    }
+
+    func macAppStoreReceiptURL(for appURL: URL) -> URL? {
         let receiptURL = appURL
             .appending(path: "Contents", directoryHint: .isDirectory)
             .appending(path: "_MASReceipt", directoryHint: .isDirectory)
             .appending(path: "receipt", directoryHint: .notDirectory)
 
-        return FileManager.default.fileExists(atPath: receiptURL.fileSystemPath)
+        guard FileManager.default.fileExists(atPath: receiptURL.fileSystemPath) else {
+            return nil
+        }
+
+        return receiptURL
     }
 
     func hasIOSAppStoreMetadata(_ appURL: URL) -> Bool {
-        let metadataURL = appURL
-            .appending(path: "Wrapper", directoryHint: .isDirectory)
-            .appending(path: "iTunesMetadata.plist", directoryHint: .notDirectory)
-
-        guard FileManager.default.fileExists(atPath: metadataURL.fileSystemPath) else {
+        guard let metadataURL = iTunesMetadataURL(for: appURL) else {
             return false
         }
 
         let metadata = readPropertyList(at: metadataURL)
         return stringValue("softwareVersionBundleId", in: metadata) != nil
             || metadata["itemId"] != nil
+    }
+
+    func iTunesMetadataURL(for appURL: URL) -> URL? {
+        let metadataURL = appURL
+            .appending(path: "Wrapper", directoryHint: .isDirectory)
+            .appending(path: "iTunesMetadata.plist", directoryHint: .notDirectory)
+
+        guard FileManager.default.fileExists(atPath: metadataURL.fileSystemPath) else {
+            return nil
+        }
+
+        return metadataURL
     }
 
     func isWrappedIOSApplication(_ appURL: URL) -> Bool {
@@ -346,6 +381,52 @@ private extension FileSystemScanner {
         }
 
         return dictionary
+    }
+
+    func appStoreMetadataItems(from metadata: [String: Any]) -> [AppStoreMetadataItem] {
+        metadata.keys.sorted().compactMap { key in
+            guard let value = metadata[key] else {
+                return nil
+            }
+
+            return AppStoreMetadataItem(
+                key: key,
+                value: appStoreMetadataValueDescription(value)
+            )
+        }
+    }
+
+    func appStoreMetadataValueDescription(_ value: Any) -> String {
+        if let string = value as? String {
+            return string
+        }
+
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+
+        if let date = value as? Date {
+            return date.formatted(date: .abbreviated, time: .standard)
+        }
+
+        if let data = value as? Data {
+            return "\(data.count) bytes"
+        }
+
+        if let values = value as? [Any] {
+            return values
+                .map(appStoreMetadataValueDescription)
+                .joined(separator: ", ")
+        }
+
+        if let dictionary = value as? [String: Any] {
+            return dictionary.keys.sorted().map { key in
+                "\(key): \(appStoreMetadataValueDescription(dictionary[key] as Any))"
+            }
+            .joined(separator: ", ")
+        }
+
+        return String(describing: value)
     }
 
     func homebrewCaskApplications(caskInfos: [HomebrewCaskInfo]) async -> Set<HomebrewCaskApplication> {

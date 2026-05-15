@@ -177,6 +177,7 @@ struct RhodonTests {
 
         #expect(applications.first?.installedSource == .appStore)
         #expect(applications.first?.availableSources == [.appStore])
+        #expect(applications.first?.appStoreMetadata?.receiptPath?.hasSuffix("_MASReceipt/receipt") == true)
     }
 
     @MainActor
@@ -202,6 +203,9 @@ struct RhodonTests {
             [
                 "itemId": 1_613_945_652,
                 "itemName": "Immich",
+                "artistName": "Alex Tran",
+                "genre": "Photo & Video",
+                "kind": "software",
                 "softwareVersionBundleId": "app.alextran.immich"
             ],
             at: wrapperURL.appending(path: "iTunesMetadata.plist", directoryHint: .notDirectory)
@@ -217,6 +221,10 @@ struct RhodonTests {
         #expect(applications.first?.installedSource == .appStore)
         #expect(applications.first?.availableSources == [.appStore])
         #expect(applications.first?.isIOSApp == true)
+        #expect(applications.first?.appStoreMetadata?.metadataPath?.hasSuffix("iTunesMetadata.plist") == true)
+        #expect(applications.first?.appStoreMetadata?.items.contains(AppStoreMetadataItem(key: "itemName", value: "Immich")) == true)
+        #expect(applications.first?.appStoreMetadata?.items.contains(AppStoreMetadataItem(key: "artistName", value: "Alex Tran")) == true)
+        #expect(applications.first?.appStoreMetadata?.items.contains(AppStoreMetadataItem(key: "genre", value: "Photo & Video")) == true)
     }
 
     @MainActor
@@ -381,7 +389,9 @@ private func makeInstalledApplication(
         availableSources: [installedSource],
         canMigrate: canMigrate,
         installPath: "/Applications/\(name).app",
-        isIOSApp: isIOSApp
+        isIOSApp: isIOSApp,
+        homebrewCaskInfo: nil,
+        appStoreMetadata: nil
     )
 }
 

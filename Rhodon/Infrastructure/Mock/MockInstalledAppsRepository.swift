@@ -39,7 +39,15 @@ struct MockInstalledAppsRepository: InstalledAppsRepository {
                 installedSource: .appStore,
                 availableSources: [.appStore, .dmg],
                 canMigrate: true,
-                installPath: "/Applications/Linear.app"
+                installPath: "/Applications/Linear.app",
+                appStoreMetadata: AppStoreMetadata(
+                    receiptPath: "/Applications/Linear.app/Contents/_MASReceipt/receipt",
+                    metadataPath: nil,
+                    items: [
+                        AppStoreMetadataItem(key: "bundleDisplayName", value: "Linear"),
+                        AppStoreMetadataItem(key: "softwareVersionBundleId", value: "com.linear")
+                    ]
+                )
             ),
             InstalledApplication(
                 name: "CleanShot X",
