@@ -27,7 +27,10 @@ struct AppDetailView: View {
                     homebrewCard(for: caskInfo)
                 }
                 if let metadata = application.appStoreMetadata {
-                    appStoreMetadataCard(for: metadata, application: application)
+                    AppStoreMetadataCard(
+                        metadata: metadata,
+                        application: application
+                    )
                 }
                 migrationCard(for: application)
             }
@@ -131,30 +134,6 @@ struct AppDetailView: View {
         }
     }
 
-    private func appStoreMetadataCard(
-        for metadata: AppStoreMetadata,
-        application: InstalledApplication
-    ) -> some View {
-        CardView {
-            VStack(alignment: .leading, spacing: DSSpacing.md) {
-                SectionHeader(
-                    application.isIOSApp ? "App Store Metadata" : "Mac App Store Metadata",
-                    subtitle: application.isIOSApp ? "iTunes metadata from the wrapped app bundle" : "Receipt and available store metadata"
-                )
-
-                VStack(alignment: .leading, spacing: DSSpacing.sm) {
-                    MetadataRow(title: "Receipt", value: metadata.receiptPath)
-                    MetadataRow(title: "Metadata", value: metadata.metadataPath)
-
-                    ForEach(metadata.items) { item in
-                        MetadataRow(title: item.key, value: item.value)
-                    }
-                }
-                .font(DSTypography.body)
-            }
-        }
-    }
-
     private func migrationCard(for application: InstalledApplication) -> some View {
         CardView {
             HStack(spacing: DSSpacing.md) {
@@ -176,6 +155,233 @@ struct AppDetailView: View {
     }
 }
 
+private struct AppStoreMetadataCard: View {
+    let metadata: AppStoreMetadata
+    let application: InstalledApplication
+
+    private var summaryItems: [AppStoreMetadataDisplayItem] {
+        AppStoreMetadataDisplayItem.summaryItems(from: metadata)
+    }
+
+    private var additionalItems: [AppStoreMetadataItem] {
+        let presentedKeys = Set(summaryItems.map(\.sourceKey) + ["itemName"])
+        return metadata.items.filter { !presentedKeys.contains($0.key) }
+    }
+
+    private var appStoreURL: URL? {
+        guard let itemID = metadata.value(for: "itemId") else {
+            return nil
+        }
+
+        return URL(string: "https://apps.apple.com/app/id\(itemID)")
+    }
+
+    var body: some View {
+        CardView {
+            VStack(alignment: .leading, spacing: DSSpacing.lg) {
+                SectionHeader(
+                    application.isIOSApp ? "App Store Metadata" : "Mac App Store Metadata",
+                    subtitle: application.isIOSApp ? "Store identity from the wrapped app bundle" : "Receipt and available store identity"
+                )
+
+                AppStorePageHero(
+                    metadata: metadata,
+                    application: application,
+                    appStoreURL: appStoreURL
+                )
+
+                StoreMetadataFactStrip(items: summaryItems)
+
+                if metadata.receiptPath != nil || metadata.metadataPath != nil {
+                    VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                        Text("Local Evidence")
+                            .font(DSTypography.captionEmphasized)
+                            .foregroundStyle(DSColor.secondaryText)
+
+                        MetadataRow(title: "Receipt", value: metadata.receiptPath)
+                        MetadataRow(title: "Metadata File", value: metadata.metadataPath)
+                    }
+                }
+
+                if !additionalItems.isEmpty {
+                    DisclosureGroup("Additional Metadata") {
+                        VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                            ForEach(additionalItems) { item in
+                                MetadataRow(
+                                    title: item.key.metadataDisplayTitle,
+                                    value: item.value
+                                )
+                            }
+                        }
+                        .padding(.top, DSSpacing.sm)
+                    }
+                    .font(DSTypography.bodyEmphasized)
+                }
+            }
+        }
+    }
+}
+
+private struct AppStorePageHero: View {
+    let metadata: AppStoreMetadata
+    let application: InstalledApplication
+    let appStoreURL: URL?
+
+    private var storeName: String {
+        metadata.value(for: "itemName") ?? application.name
+    }
+
+    private var developer: String? {
+        metadata.value(for: "artistName")
+    }
+
+    private var category: String? {
+        metadata.value(for: "genre")
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: DSSpacing.lg) {
+            AppIconView(application: application, size: DSIconSize.appDetail)
+
+            VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                Text(storeName)
+                    .font(DSTypography.title)
+                    .foregroundStyle(DSColor.primaryText)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                if let developer {
+                    Text(developer)
+                        .font(DSTypography.bodyEmphasized)
+                        .foregroundStyle(DSColor.appTint)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+
+                HStack(spacing: DSSpacing.sm) {
+                    if let category {
+                        AppStoreCategoryPill(title: category)
+                    }
+
+                    if application.isIOSApp {
+                        IOSAppPill()
+                    }
+                }
+            }
+
+            Spacer(minLength: DSSpacing.md)
+
+            if let appStoreURL {
+                Link(destination: appStoreURL) {
+                    Label("View", systemImage: "arrow.up.right.square")
+                        .font(DSTypography.bodyEmphasized)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(DSColor.appTint)
+            }
+        }
+        .padding(DSSpacing.lg)
+        .background(DSColor.surface)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: DSCornerRadius.md,
+                style: .continuous
+            )
+        )
+    }
+}
+
+private struct StoreMetadataFactStrip: View {
+    let items: [AppStoreMetadataDisplayItem]
+
+    private let columns = [
+        GridItem(.adaptive(minimum: DSSpacing.xxl * 4), spacing: DSSpacing.md)
+    ]
+
+    var body: some View {
+        if !items.isEmpty {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: DSSpacing.md) {
+                ForEach(items) { item in
+                    VStack(alignment: .leading, spacing: DSSpacing.xs) {
+                        HStack(spacing: DSSpacing.xs) {
+                            Image(systemName: item.systemImage)
+                                .foregroundStyle(DSColor.secondaryText)
+
+                            Text(item.title.uppercased())
+                                .font(DSTypography.captionEmphasized)
+                                .foregroundStyle(DSColor.secondaryText)
+                        }
+
+                        Text(item.value)
+                            .font(DSTypography.bodyEmphasized)
+                            .foregroundStyle(DSColor.primaryText)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.vertical, DSSpacing.sm)
+        }
+    }
+}
+
+private struct AppStoreMetadataDisplayItem: Identifiable {
+    let sourceKey: String
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var id: String {
+        sourceKey
+    }
+
+    static func summaryItems(from metadata: AppStoreMetadata) -> [AppStoreMetadataDisplayItem] {
+        [
+            item("artistName", title: "Developer", systemImage: "person.crop.square", metadata: metadata),
+            item("genre", title: "Category", systemImage: "square.grid.2x2", metadata: metadata),
+            item("kind", title: "Kind", systemImage: "shippingbox", metadata: metadata),
+            item("softwareVersionBundleId", title: "Bundle ID", systemImage: "curlybraces", metadata: metadata),
+            item("itemId", title: "Store ID", systemImage: "number", metadata: metadata)
+        ]
+        .compactMap(\.self)
+    }
+
+    private static func item(
+        _ key: String,
+        title: String,
+        systemImage: String,
+        metadata: AppStoreMetadata
+    ) -> AppStoreMetadataDisplayItem? {
+        guard let value = metadata.items.first(where: { $0.key == key })?.value,
+              !value.isEmpty
+        else {
+            return nil
+        }
+
+        return AppStoreMetadataDisplayItem(
+            sourceKey: key,
+            title: title,
+            value: value,
+            systemImage: systemImage
+        )
+    }
+}
+
+private struct AppStoreCategoryPill: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(DSTypography.captionEmphasized)
+            .foregroundStyle(DSColor.primaryText)
+            .padding(.horizontal, DSSpacing.sm)
+            .padding(.vertical, DSSpacing.xs)
+            .background(DSColor.elevatedSurface)
+            .clipShape(RoundedRectangle(cornerRadius: DSCornerRadius.sm, style: .continuous))
+    }
+}
+
 private struct MetadataRow: View {
     let title: String
     let value: String?
@@ -190,6 +396,29 @@ private struct MetadataRow: View {
                     .textSelection(.enabled)
             }
         }
+    }
+}
+
+private extension String {
+    var metadataDisplayTitle: String {
+        let spaced = reduce(into: "") { result, character in
+            if character.isUppercase && !result.isEmpty {
+                result.append(" ")
+            }
+
+            result.append(character)
+        }
+
+        return spaced
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalized
+    }
+}
+
+private extension AppStoreMetadata {
+    func value(for key: String) -> String? {
+        items.first { $0.key == key }?.value
     }
 }
 
