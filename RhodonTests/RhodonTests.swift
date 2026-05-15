@@ -130,6 +130,45 @@ struct RhodonTests {
     }
 
     @MainActor
+    @Test func fileSystemScannerDetectsWrappedIOSAppStoreApplications() async throws {
+        let rootURL = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: rootURL)
+        }
+
+        let appURL = rootURL.appending(path: "Immich.app", directoryHint: .isDirectory)
+        let wrapperURL = appURL.appending(path: "Wrapper", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(
+            at: wrapperURL,
+            withIntermediateDirectories: true
+        )
+        try makeIOSApplicationBundle(
+            at: wrapperURL.appending(path: "Immich.app", directoryHint: .isDirectory),
+            name: "Immich",
+            bundleIdentifier: "app.alextran.immich",
+            version: "2.7.5"
+        )
+        try makePropertyList(
+            [
+                "itemId": 1_613_945_652,
+                "itemName": "Immich",
+                "softwareVersionBundleId": "app.alextran.immich"
+            ],
+            at: wrapperURL.appending(path: "iTunesMetadata.plist", directoryHint: .notDirectory)
+        )
+
+        let applications = try await FileSystemScanner(
+            applicationDirectories: [rootURL],
+            homebrewCaskProvider: StaticHomebrewCaskProvider(caskDirectories: [])
+        ).scanInstalledApplications()
+
+        #expect(applications.first?.name == "Immich")
+        #expect(applications.first?.bundleIdentifier == "app.alextran.immich")
+        #expect(applications.first?.installedSource == .appStore)
+        #expect(applications.first?.availableSources == [.appStore])
+    }
+
+    @MainActor
     @Test func fileSystemScannerDetectsHomebrewCaskApplications() async throws {
         let applicationsURL = try makeTemporaryDirectory()
         let caskroomURL = try makeTemporaryDirectory()
@@ -203,4 +242,34 @@ private func makeApplicationBundle(
         options: .zero
     )
     try data.write(to: contentsURL.appending(path: "Info.plist"))
+}
+
+private func makeIOSApplicationBundle(
+    at appURL: URL,
+    name: String,
+    bundleIdentifier: String,
+    version: String
+) throws {
+    try FileManager.default.createDirectory(
+        at: appURL,
+        withIntermediateDirectories: true
+    )
+
+    try makePropertyList(
+        [
+            "CFBundleDisplayName": name,
+            "CFBundleIdentifier": bundleIdentifier,
+            "CFBundleShortVersionString": version
+        ],
+        at: appURL.appending(path: "Info.plist")
+    )
+}
+
+private func makePropertyList(_ propertyList: [String: Any], at url: URL) throws {
+    let data = try PropertyListSerialization.data(
+        fromPropertyList: propertyList,
+        format: .xml,
+        options: .zero
+    )
+    try data.write(to: url)
 }

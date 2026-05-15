@@ -107,9 +107,9 @@ private extension FileSystemScanner {
     }
 
     func readInfoPlist(for appURL: URL) -> [String: Any] {
-        let infoPlistURL = appURL
-            .appending(path: "Contents", directoryHint: .isDirectory)
-            .appending(path: "Info.plist", directoryHint: .notDirectory)
+        guard let infoPlistURL = infoPlistURL(for: appURL) else {
+            return [:]
+        }
 
         guard
             let data = try? Data(contentsOf: infoPlistURL),
@@ -120,6 +120,19 @@ private extension FileSystemScanner {
         }
 
         return dictionary
+    }
+
+    func infoPlistURL(for appURL: URL) -> URL? {
+        let macOSInfoPlistURL = appURL
+            .appending(path: "Contents", directoryHint: .isDirectory)
+            .appending(path: "Info.plist", directoryHint: .notDirectory)
+
+        if FileManager.default.fileExists(atPath: macOSInfoPlistURL.fileSystemPath) {
+            return macOSInfoPlistURL
+        }
+
+        return wrappedIOSApplicationURL(for: appURL)?
+            .appending(path: "Info.plist", directoryHint: .notDirectory)
     }
 
     func stringValue(_ key: String, in dictionary: [String: Any]) -> String? {
@@ -172,12 +185,57 @@ private extension FileSystemScanner {
     }
 
     func hasMacAppStoreReceipt(_ appURL: URL) -> Bool {
+        if hasIOSAppStoreMetadata(appURL) {
+            return true
+        }
+
         let receiptURL = appURL
             .appending(path: "Contents", directoryHint: .isDirectory)
             .appending(path: "_MASReceipt", directoryHint: .isDirectory)
             .appending(path: "receipt", directoryHint: .notDirectory)
 
         return FileManager.default.fileExists(atPath: receiptURL.fileSystemPath)
+    }
+
+    func hasIOSAppStoreMetadata(_ appURL: URL) -> Bool {
+        let metadataURL = appURL
+            .appending(path: "Wrapper", directoryHint: .isDirectory)
+            .appending(path: "iTunesMetadata.plist", directoryHint: .notDirectory)
+
+        guard FileManager.default.fileExists(atPath: metadataURL.fileSystemPath) else {
+            return false
+        }
+
+        let metadata = readPropertyList(at: metadataURL)
+        return stringValue("softwareVersionBundleId", in: metadata) != nil
+            || metadata["itemId"] != nil
+    }
+
+    func wrappedIOSApplicationURL(for appURL: URL) -> URL? {
+        let wrapperURL = appURL.appending(path: "Wrapper", directoryHint: .isDirectory)
+        guard
+            let contents = try? FileManager.default.contentsOfDirectory(
+                at: wrapperURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        else {
+            return nil
+        }
+
+        return contents.first { $0.pathExtension == "app" }
+    }
+
+    func readPropertyList(at url: URL) -> [String: Any] {
+        guard
+            let data = try? Data(contentsOf: url),
+            let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+            let dictionary = plist as? [String: Any]
+        else {
+            return [:]
+        }
+
+        return dictionary
     }
 
     func homebrewCaskApplications() -> Set<HomebrewCaskApplication> {
