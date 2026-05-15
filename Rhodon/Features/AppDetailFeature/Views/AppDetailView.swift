@@ -24,7 +24,7 @@ struct AppDetailView: View {
                 header(for: application)
                 sourceCard(for: application)
                 if let caskInfo = application.homebrewCaskInfo {
-                    homebrewCard(for: caskInfo)
+                    HomebrewCaskCard(caskInfo: caskInfo)
                 }
                 if let metadata = application.appStoreMetadata {
                     AppStoreMetadataCard(
@@ -90,50 +90,6 @@ struct AppDetailView: View {
         }
     }
 
-    private func homebrewCard(for caskInfo: HomebrewCaskInfo) -> some View {
-        CardView {
-            VStack(alignment: .leading, spacing: DSSpacing.md) {
-                SectionHeader(
-                    "Homebrew Cask",
-                    subtitle: caskInfo.description
-                )
-
-                VStack(alignment: .leading, spacing: DSSpacing.sm) {
-                    MetadataRow(title: "Token", value: caskInfo.token)
-                    MetadataRow(title: "Name", value: caskInfo.displayName)
-                    MetadataRow(title: "Tap", value: caskInfo.tap)
-                    MetadataRow(title: "Version", value: caskInfo.version)
-                    MetadataRow(title: "Installed", value: caskInfo.installedVersion)
-                    MetadataRow(title: "Download", value: caskInfo.url)
-
-                    if let url = caskInfo.homebrewPageURL {
-                        LabeledContent("Homebrew Page") {
-                            Link(url.absoluteString, destination: url)
-                                .font(DSTypography.body)
-                        }
-                    }
-
-                    if let homepage = caskInfo.homepage, let url = URL(string: homepage) {
-                        LabeledContent("Homepage") {
-                            Link(homepage, destination: url)
-                                .font(DSTypography.body)
-                        }
-                    }
-
-                    if !caskInfo.appNames.isEmpty {
-                        LabeledContent("Artifacts") {
-                            Text(caskInfo.appNames.joined(separator: ", "))
-                                .font(DSTypography.body)
-                                .foregroundStyle(DSColor.primaryText)
-                                .multilineTextAlignment(.trailing)
-                        }
-                    }
-                }
-                .font(DSTypography.body)
-            }
-        }
-    }
-
     private func migrationCard(for application: InstalledApplication) -> some View {
         CardView {
             HStack(spacing: DSSpacing.md) {
@@ -152,6 +108,257 @@ struct AppDetailView: View {
                 }
             }
         }
+    }
+}
+
+private struct HomebrewCaskCard: View {
+    let caskInfo: HomebrewCaskInfo
+
+    private var factItems: [HomebrewMetadataDisplayItem] {
+        HomebrewMetadataDisplayItem.summaryItems(from: caskInfo)
+    }
+
+    var body: some View {
+        CardView {
+            VStack(alignment: .leading, spacing: DSSpacing.lg) {
+                SectionHeader(
+                    "Homebrew Cask",
+                    subtitle: "Package metadata from Homebrew"
+                )
+
+                HomebrewCaskHero(caskInfo: caskInfo)
+                HomebrewMetadataFactStrip(items: factItems)
+                HomebrewArtifactsSection(caskInfo: caskInfo)
+                HomebrewTechnicalDetails(caskInfo: caskInfo)
+            }
+        }
+    }
+}
+
+private struct HomebrewCaskHero: View {
+    let caskInfo: HomebrewCaskInfo
+
+    private var homepageURL: URL? {
+        caskInfo.homepage.flatMap(URL.init(string:))
+    }
+
+    private var downloadURL: URL? {
+        caskInfo.url.flatMap(URL.init(string:))
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: DSSpacing.lg) {
+            ZStack {
+                RoundedRectangle(cornerRadius: DSCornerRadius.lg, style: .continuous)
+                    .fill(DSColor.elevatedSurface)
+
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: DSSpacing.xxl))
+                    .foregroundStyle(DSColor.warning)
+            }
+            .frame(width: DSIconSize.appDetail, height: DSIconSize.appDetail)
+
+            VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                Text(caskInfo.displayName)
+                    .font(DSTypography.title)
+                    .foregroundStyle(DSColor.primaryText)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                if let description = caskInfo.description, !description.isEmpty {
+                    Text(description)
+                        .font(DSTypography.body)
+                        .foregroundStyle(DSColor.secondaryText)
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+
+                HStack(spacing: DSSpacing.sm) {
+                    HomebrewPill(title: "Cask")
+
+                    if let tap = caskInfo.tap {
+                        HomebrewPill(title: tap)
+                    }
+                }
+            }
+
+            Spacer(minLength: DSSpacing.md)
+
+            HStack(spacing: DSSpacing.sm) {
+                if let url = caskInfo.homebrewPageURL {
+                    Link(destination: url) {
+                        Label("Cask", systemImage: "terminal")
+                            .font(DSTypography.bodyEmphasized)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DSColor.appTint)
+                }
+
+                if let homepageURL {
+                    Link(destination: homepageURL) {
+                        Image(systemName: "safari")
+                            .font(DSTypography.bodyEmphasized)
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if let downloadURL {
+                    Link(destination: downloadURL) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(DSTypography.bodyEmphasized)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(DSSpacing.lg)
+        .background(DSColor.surface)
+        .clipShape(
+            RoundedRectangle(
+                cornerRadius: DSCornerRadius.md,
+                style: .continuous
+            )
+        )
+    }
+}
+
+private struct HomebrewMetadataFactStrip: View {
+    let items: [HomebrewMetadataDisplayItem]
+
+    private let columns = [
+        GridItem(.adaptive(minimum: DSSpacing.xxl * 4), spacing: DSSpacing.md)
+    ]
+
+    var body: some View {
+        if !items.isEmpty {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: DSSpacing.md) {
+                ForEach(items) { item in
+                    VStack(alignment: .leading, spacing: DSSpacing.xs) {
+                        HStack(spacing: DSSpacing.xs) {
+                            Image(systemName: item.systemImage)
+                                .foregroundStyle(DSColor.secondaryText)
+
+                            Text(item.title.uppercased())
+                                .font(DSTypography.captionEmphasized)
+                                .foregroundStyle(DSColor.secondaryText)
+                        }
+
+                        Text(item.value)
+                            .font(DSTypography.bodyEmphasized)
+                            .foregroundStyle(DSColor.primaryText)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.vertical, DSSpacing.sm)
+        }
+    }
+}
+
+private struct HomebrewMetadataDisplayItem: Identifiable {
+    let id: String
+    let title: String
+    let value: String
+    let systemImage: String
+
+    static func summaryItems(from caskInfo: HomebrewCaskInfo) -> [HomebrewMetadataDisplayItem] {
+        [
+            item("version", title: "Version", value: caskInfo.version, systemImage: "tag"),
+            item("installed", title: "Installed", value: caskInfo.installedVersion, systemImage: "checkmark.circle"),
+            item("token", title: "Token", value: caskInfo.token, systemImage: "number"),
+            item("tap", title: "Tap", value: caskInfo.tap, systemImage: "tray.full")
+        ]
+        .compactMap(\.self)
+    }
+
+    private static func item(
+        _ id: String,
+        title: String,
+        value: String?,
+        systemImage: String
+    ) -> HomebrewMetadataDisplayItem? {
+        guard let value, !value.isEmpty else {
+            return nil
+        }
+
+        return HomebrewMetadataDisplayItem(
+            id: id,
+            title: title,
+            value: value,
+            systemImage: systemImage
+        )
+    }
+}
+
+private struct HomebrewArtifactsSection: View {
+    let caskInfo: HomebrewCaskInfo
+
+    var body: some View {
+        if !caskInfo.appNames.isEmpty {
+            VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                Text("Installed Artifacts")
+                    .font(DSTypography.captionEmphasized)
+                    .foregroundStyle(DSColor.secondaryText)
+
+                HStack(spacing: DSSpacing.sm) {
+                    ForEach(caskInfo.appNames, id: \.self) { appName in
+                        Text(appName)
+                            .font(DSTypography.captionEmphasized)
+                            .foregroundStyle(DSColor.primaryText)
+                            .padding(.horizontal, DSSpacing.sm)
+                            .padding(.vertical, DSSpacing.xs)
+                            .background(DSColor.surface)
+                            .clipShape(
+                                RoundedRectangle(
+                                    cornerRadius: DSCornerRadius.sm,
+                                    style: .continuous
+                                )
+                            )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct HomebrewTechnicalDetails: View {
+    let caskInfo: HomebrewCaskInfo
+
+    var body: some View {
+        DisclosureGroup("Technical Metadata") {
+            VStack(alignment: .leading, spacing: DSSpacing.sm) {
+                MetadataRow(title: "Token", value: caskInfo.token)
+                MetadataRow(title: "Name", value: caskInfo.displayName)
+                MetadataRow(title: "Tap", value: caskInfo.tap)
+                MetadataRow(title: "Version", value: caskInfo.version)
+                MetadataRow(title: "Installed", value: caskInfo.installedVersion)
+                MetadataRow(title: "Download", value: caskInfo.url)
+
+                if let url = caskInfo.homebrewPageURL {
+                    MetadataRow(title: "Homebrew Page", value: url.absoluteString)
+                }
+
+                MetadataRow(title: "Homepage", value: caskInfo.homepage)
+            }
+            .padding(.top, DSSpacing.sm)
+        }
+        .font(DSTypography.bodyEmphasized)
+    }
+}
+
+private struct HomebrewPill: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(DSTypography.captionEmphasized)
+            .foregroundStyle(DSColor.primaryText)
+            .padding(.horizontal, DSSpacing.sm)
+            .padding(.vertical, DSSpacing.xs)
+            .background(DSColor.elevatedSurface)
+            .clipShape(RoundedRectangle(cornerRadius: DSCornerRadius.sm, style: .continuous))
     }
 }
 
