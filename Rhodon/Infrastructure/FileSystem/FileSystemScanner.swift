@@ -13,8 +13,8 @@ struct FileSystemScanner: AppScanner {
     }
 
     func scanInstalledApplications() async throws -> [InstalledApplication] {
-        let installedCaskInfos = homebrewCaskProvider.installedCaskInfos()
-        let homebrewCasks = homebrewCaskApplications(caskInfos: installedCaskInfos)
+        let installedCaskInfos = await homebrewCaskProvider.installedCaskInfos()
+        let homebrewCasks = await homebrewCaskApplications(caskInfos: installedCaskInfos)
 
         let scannedApplications = try applicationDirectories
             .flatMap { directory in
@@ -24,7 +24,7 @@ struct FileSystemScanner: AppScanner {
                 $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
 
-        return applicationsWithHomebrewAvailability(scannedApplications)
+        return await applicationsWithHomebrewAvailability(scannedApplications)
     }
 }
 
@@ -122,13 +122,13 @@ private extension FileSystemScanner {
 
     func applicationsWithHomebrewAvailability(
         _ applications: [InstalledApplication]
-    ) -> [InstalledApplication] {
+    ) async -> [InstalledApplication] {
         let candidateTokens = Set(
             applications
                 .filter { $0.installedSource != .brew }
                 .flatMap(homebrewCandidateTokens)
         )
-        let availableCaskInfos = homebrewCaskProvider.availableCaskInfos(
+        let availableCaskInfos = await homebrewCaskProvider.availableCaskInfos(
             forCandidateTokens: candidateTokens
         )
 
@@ -351,12 +351,12 @@ private extension FileSystemScanner {
         return dictionary
     }
 
-    func homebrewCaskApplications(caskInfos: [HomebrewCaskInfo]) -> Set<HomebrewCaskApplication> {
+    func homebrewCaskApplications(caskInfos: [HomebrewCaskInfo]) async -> Set<HomebrewCaskApplication> {
         let infoByToken = Dictionary(
             uniqueKeysWithValues: caskInfos.map { ($0.token.normalizedAppIdentifier, $0) }
         )
 
-        return homebrewCaskProvider.installedCaskDirectories().reduce(into: Set<HomebrewCaskApplication>()) { applications, directory in
+        return await homebrewCaskProvider.installedCaskDirectories().reduce(into: Set<HomebrewCaskApplication>()) { applications, directory in
             let caskInfo = infoByToken[directory.lastPathComponent.normalizedAppIdentifier]
             applications.formUnion(homebrewCaskApplications(in: directory, caskInfo: caskInfo))
         }
@@ -412,52 +412,52 @@ private extension FileSystemScanner {
 }
 
 protocol HomebrewCaskProviding: Sendable {
-    func installedCaskDirectories() -> [URL]
-    func installedCaskInfos() -> [HomebrewCaskInfo]
-    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo]
+    func installedCaskDirectories() async -> [URL]
+    func installedCaskInfos() async -> [HomebrewCaskInfo]
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) async -> [HomebrewCaskInfo]
 }
 
 extension HomebrewCaskProviding {
-    func installedCaskInfos() -> [HomebrewCaskInfo] {
+    func installedCaskInfos() async -> [HomebrewCaskInfo] {
         []
     }
 
-    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo] {
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) async -> [HomebrewCaskInfo] {
         []
     }
 }
 
 struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
-    func installedCaskDirectories() -> [URL] {
-        guard let caskroomPath = runBrewLines(arguments: ["--caskroom"]).first else {
+    func installedCaskDirectories() async -> [URL] {
+        guard let caskroomPath = await runBrewLines(arguments: ["--caskroom"]).first else {
             return []
         }
 
         let caskroomURL = URL(filePath: caskroomPath, directoryHint: .isDirectory)
-        return runBrewLines(arguments: ["list", "--cask"]).map { token in
+        return await runBrewLines(arguments: ["list", "--cask"]).map { token in
             caskroomURL.appending(path: token, directoryHint: .isDirectory)
         }
     }
 
-    func installedCaskInfos() -> [HomebrewCaskInfo] {
-        let tokens = runBrewLines(arguments: ["list", "--cask"])
+    func installedCaskInfos() async -> [HomebrewCaskInfo] {
+        let tokens = await runBrewLines(arguments: ["list", "--cask"])
         guard !tokens.isEmpty else {
             return []
         }
 
-        return caskInfosFromAPI(for: Set(tokens))
+        return await caskInfosFromAPI(for: Set(tokens))
     }
 
-    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo] {
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) async -> [HomebrewCaskInfo] {
         let candidates = Set(candidateTokens.map(\.normalizedAppIdentifier))
-        return allAvailableCaskInfos().filter { caskInfo in
+        return await allAvailableCaskInfos().filter { caskInfo in
             candidates.contains(caskInfo.token.normalizedAppIdentifier)
         }
     }
 
-    private func runBrewLines(arguments: [String]) -> [String] {
+    private func runBrewLines(arguments: [String]) async -> [String] {
         guard
-            let data = runBrewData(arguments: arguments),
+            let data = await runBrewData(arguments: arguments),
             let output = String(data: data, encoding: .utf8)
         else {
             return []
@@ -470,29 +470,33 @@ struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
             .filter { !$0.isEmpty }
     }
 
-    private func runBrewData(arguments: [String]) -> Data? {
-        let process = Process()
-        process.executableURL = URL(filePath: "/bin/zsh", directoryHint: .notDirectory)
-        process.arguments = ["-lc", shellCommand(for: arguments)]
+    private func runBrewData(arguments: [String]) async -> Data? {
+        let command = shellCommand(for: arguments)
 
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = Pipe()
+        return await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(filePath: "/bin/zsh", directoryHint: .notDirectory)
+            process.arguments = ["-lc", command]
 
-        do {
-            try process.run()
-        } catch {
-            return nil
-        }
+            let outputPipe = Pipe()
+            process.standardOutput = outputPipe
+            process.standardError = Pipe()
 
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+            do {
+                try process.run()
+            } catch {
+                return nil
+            }
 
-        guard process.terminationStatus == .zero else {
-            return nil
-        }
+            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
 
-        return data
+            guard process.terminationStatus == .zero else {
+                return nil
+            }
+
+            return data
+        }.value
     }
 
     private func shellCommand(for arguments: [String]) -> String {
@@ -505,25 +509,25 @@ struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
-    private func allAvailableCaskInfos() -> [HomebrewCaskInfo] {
+    private func allAvailableCaskInfos() async -> [HomebrewCaskInfo] {
         guard let url = URL(string: "https://formulae.brew.sh/api/cask.json") else {
             return []
         }
 
-        guard let data = try? Data(contentsOf: url) else {
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else {
             return []
         }
 
         return decodeHomebrewCaskInfos(from: data)
     }
 
-    private func caskInfosFromAPI(for tokens: Set<String>) -> [HomebrewCaskInfo] {
+    private func caskInfosFromAPI(for tokens: Set<String>) async -> [HomebrewCaskInfo] {
         guard !tokens.isEmpty else {
             return []
         }
 
         let normalizedTokens = Set(tokens.map(\.normalizedAppIdentifier))
-        return allAvailableCaskInfos().filter { caskInfo in
+        return await allAvailableCaskInfos().filter { caskInfo in
             normalizedTokens.contains(caskInfo.token.normalizedAppIdentifier)
         }
     }
@@ -587,15 +591,15 @@ struct StaticHomebrewCaskProvider: HomebrewCaskProviding {
     let caskDirectories: [URL]
     var caskInfos: [HomebrewCaskInfo] = []
 
-    func installedCaskDirectories() -> [URL] {
+    func installedCaskDirectories() async -> [URL] {
         caskDirectories
     }
 
-    func installedCaskInfos() -> [HomebrewCaskInfo] {
+    func installedCaskInfos() async -> [HomebrewCaskInfo] {
         caskInfos
     }
 
-    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo] {
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) async -> [HomebrewCaskInfo] {
         caskInfos.filter { candidateTokens.contains($0.token.normalizedAppIdentifier) }
     }
 }
