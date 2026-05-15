@@ -223,6 +223,46 @@ struct RhodonTests {
         #expect(applications.first?.homebrewCaskInfo?.description == "Menu bar helper for Homebrew")
     }
 
+    @MainActor
+    @Test func fileSystemScannerDetectsHomebrewAvailabilityForNonBrewApplications() async throws {
+        let applicationsURL = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: applicationsURL)
+        }
+
+        try makeApplicationBundle(
+            at: applicationsURL.appending(path: "Visual Studio Code.app", directoryHint: .isDirectory),
+            name: "Visual Studio Code",
+            bundleIdentifier: "com.microsoft.VSCode",
+            version: "1.120.0"
+        )
+
+        let applications = try await FileSystemScanner(
+            applicationDirectories: [applicationsURL],
+            homebrewCaskProvider: StaticHomebrewCaskProvider(
+                caskDirectories: [],
+                caskInfos: [
+                    HomebrewCaskInfo(
+                        token: "visual-studio-code",
+                        tap: "homebrew/cask",
+                        names: ["Microsoft Visual Studio Code"],
+                        description: "Open-source code editor",
+                        homepage: "https://code.visualstudio.com/",
+                        url: "https://update.code.visualstudio.com/latest/darwin/stable",
+                        version: "1.120.0",
+                        installedVersion: nil,
+                        appNames: ["Visual Studio Code.app"]
+                    )
+                ]
+            )
+        ).scanInstalledApplications()
+
+        #expect(applications.first?.installedSource == .dmg)
+        #expect(applications.first?.availableSources == [.dmg, .brew])
+        #expect(applications.first?.canMigrate == true)
+        #expect(applications.first?.homebrewCaskInfo?.token == "visual-studio-code")
+    }
+
 }
 
 private func makeTemporaryDirectory() throws -> URL {

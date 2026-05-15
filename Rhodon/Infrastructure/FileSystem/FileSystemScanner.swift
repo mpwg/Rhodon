@@ -13,17 +13,18 @@ struct FileSystemScanner: AppScanner {
     }
 
     func scanInstalledApplications() async throws -> [InstalledApplication] {
-        let homebrewCasks = homebrewCaskApplications(
-            caskInfos: homebrewCaskProvider.installedCaskInfos()
-        )
+        let installedCaskInfos = homebrewCaskProvider.installedCaskInfos()
+        let homebrewCasks = homebrewCaskApplications(caskInfos: installedCaskInfos)
 
-        return try applicationDirectories
+        let scannedApplications = try applicationDirectories
             .flatMap { directory in
                 try applications(in: directory, homebrewCasks: homebrewCasks)
             }
             .sorted {
                 $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
+
+        return applicationsWithHomebrewAvailability(scannedApplications)
     }
 }
 
@@ -117,6 +118,86 @@ private extension FileSystemScanner {
             isIOSApp: isIOSApp,
             homebrewCaskInfo: homebrewCaskInfo
         )
+    }
+
+    func applicationsWithHomebrewAvailability(
+        _ applications: [InstalledApplication]
+    ) -> [InstalledApplication] {
+        let candidateTokens = Set(
+            applications
+                .filter { $0.installedSource != .brew }
+                .flatMap(homebrewCandidateTokens)
+        )
+        let availableCaskInfos = homebrewCaskProvider.availableCaskInfos(
+            forCandidateTokens: candidateTokens
+        )
+
+        guard !availableCaskInfos.isEmpty else {
+            return applications
+        }
+
+        return applications.map { application in
+            guard
+                application.installedSource != .brew,
+                let caskInfo = matchingHomebrewCaskInfo(
+                    for: application,
+                    in: availableCaskInfos
+                )
+            else {
+                return application
+            }
+
+            return applicationWithHomebrewAvailability(application, caskInfo: caskInfo)
+        }
+    }
+
+    func matchingHomebrewCaskInfo(
+        for application: InstalledApplication,
+        in caskInfos: [HomebrewCaskInfo]
+    ) -> HomebrewCaskInfo? {
+        let candidateTokens = homebrewCandidateTokens(for: application)
+        return caskInfos.first { caskInfo in
+            candidateTokens.contains(caskInfo.token.normalizedAppIdentifier)
+                || caskInfo.appNames.contains {
+                    $0.normalizedAppIdentifier == application.appFileName.normalizedAppIdentifier
+                }
+                || caskInfo.names.contains {
+                    $0.normalizedAppIdentifier == application.name.normalizedAppIdentifier
+                }
+        }
+    }
+
+    func applicationWithHomebrewAvailability(
+        _ application: InstalledApplication,
+        caskInfo: HomebrewCaskInfo
+    ) -> InstalledApplication {
+        var availableSources = application.availableSources
+        if !availableSources.contains(.brew) {
+            availableSources.append(.brew)
+        }
+
+        return InstalledApplication(
+            id: application.id,
+            name: application.name,
+            bundleIdentifier: application.bundleIdentifier,
+            version: application.version,
+            installedSource: application.installedSource,
+            availableSources: availableSources,
+            canMigrate: application.installedSource != .brew,
+            installPath: application.installPath,
+            isIOSApp: application.isIOSApp,
+            homebrewCaskInfo: caskInfo
+        )
+    }
+
+    func homebrewCandidateTokens(for application: InstalledApplication) -> [String] {
+        [
+            application.name.homebrewTokenCandidate,
+            application.appFileName.deletingAppExtension.homebrewTokenCandidate,
+            application.bundleIdentifier.split(separator: ".").last.map(String.init)?.homebrewTokenCandidate
+        ]
+        .compactMap(\.self)
+        .filter { !$0.isEmpty }
     }
 
     func readInfoPlist(for appURL: URL) -> [String: Any] {
@@ -333,10 +414,15 @@ private extension FileSystemScanner {
 protocol HomebrewCaskProviding: Sendable {
     func installedCaskDirectories() -> [URL]
     func installedCaskInfos() -> [HomebrewCaskInfo]
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo]
 }
 
 extension HomebrewCaskProviding {
     func installedCaskInfos() -> [HomebrewCaskInfo] {
+        []
+    }
+
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo] {
         []
     }
 }
@@ -359,11 +445,14 @@ struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
             return []
         }
 
-        guard let data = runBrewData(arguments: ["info", "--cask", "--json=v2"] + tokens) else {
-            return []
-        }
+        return caskInfos(for: Set(tokens))
+    }
 
-        return decodeHomebrewCaskInfos(from: data)
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo] {
+        let candidates = Set(candidateTokens.map(\.normalizedAppIdentifier))
+        return allAvailableCaskInfos().filter { caskInfo in
+            candidates.contains(caskInfo.token.normalizedAppIdentifier)
+        }
     }
 
     private func runBrewLines(arguments: [String]) -> [String] {
@@ -416,12 +505,47 @@ struct ShellHomebrewCaskProvider: HomebrewCaskProviding {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
-    private func decodeHomebrewCaskInfos(from data: Data) -> [HomebrewCaskInfo] {
-        guard
-            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let casks = root["casks"] as? [[String: Any]]
-        else {
+    private func allAvailableCaskInfos() -> [HomebrewCaskInfo] {
+        guard let url = URL(string: "https://formulae.brew.sh/api/cask.json") else {
             return []
+        }
+
+        guard let data = try? Data(contentsOf: url) else {
+            return []
+        }
+
+        return decodeHomebrewCaskInfos(from: data)
+    }
+
+    private func caskInfos(for tokens: Set<String>) -> [HomebrewCaskInfo] {
+        guard !tokens.isEmpty else {
+            return []
+        }
+
+        guard let data = runBrewData(
+            arguments: ["info", "--cask", "--json=v2"] + tokens.sorted()
+        ) else {
+            return []
+        }
+
+        return decodeHomebrewCaskInfos(from: data)
+    }
+
+    private func decodeHomebrewCaskInfos(from data: Data) -> [HomebrewCaskInfo] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) else {
+            return []
+        }
+
+        let casks: [[String: Any]]
+        if let array = root as? [[String: Any]] {
+            casks = array
+        } else if let dictionary = root as? [String: Any],
+                  let nestedCasks = dictionary["casks"] as? [[String: Any]] {
+            casks = nestedCasks
+        } else if let dictionary = root as? [String: Any] {
+            casks = [dictionary]
+        } else {
+            casks = []
         }
 
         return casks.compactMap { cask in
@@ -473,6 +597,10 @@ struct StaticHomebrewCaskProvider: HomebrewCaskProviding {
     func installedCaskInfos() -> [HomebrewCaskInfo] {
         caskInfos
     }
+
+    func availableCaskInfos(forCandidateTokens candidateTokens: Set<String>) -> [HomebrewCaskInfo] {
+        caskInfos.filter { candidateTokens.contains($0.token.normalizedAppIdentifier) }
+    }
 }
 
 private extension URL {
@@ -516,5 +644,25 @@ private extension String {
     var normalizedAppIdentifier: String {
         trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
+    }
+
+    var deletingAppExtension: String {
+        hasSuffix(".app") ? String(dropLast(4)) : self
+    }
+
+    var homebrewTokenCandidate: String {
+        let characters = lowercased().map { character -> Character in
+            character.isLetter || character.isNumber ? character : "-"
+        }
+
+        return String(characters)
+            .split(separator: "-")
+            .joined(separator: "-")
+    }
+}
+
+private extension InstalledApplication {
+    var appFileName: String {
+        URL(filePath: installPath).lastPathComponent
     }
 }
