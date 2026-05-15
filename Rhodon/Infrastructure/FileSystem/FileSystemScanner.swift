@@ -26,7 +26,7 @@ private extension FileSystemScanner {
     }
 
     func applications(in directory: URL) throws -> [InstalledApplication] {
-        guard FileManager.default.fileExists(atPath: directory.path()) else {
+        guard FileManager.default.fileExists(atPath: directory.fileSystemPath) else {
             return []
         }
 
@@ -82,7 +82,7 @@ private extension FileSystemScanner {
             installedSource: source,
             availableSources: availableSources,
             canMigrate: false,
-            installPath: appURL.path()
+            installPath: appURL.fileSystemPath
         )
     }
 
@@ -111,7 +111,7 @@ private extension FileSystemScanner {
     }
 
     func fallbackBundleIdentifier(for appURL: URL) -> String {
-        let path = appURL.path()
+        let path = appURL.fileSystemPath
             .lowercased()
             .replacingOccurrences(of: "/", with: ".")
             .replacingOccurrences(of: " ", with: "-")
@@ -123,8 +123,8 @@ private extension FileSystemScanner {
             return .appStore
         }
 
-        let path = appURL.path()
-        let resolvedPath = appURL.resolvingSymlinksInPath().path()
+        let path = appURL.fileSystemPath
+        let resolvedPath = appURL.resolvingSymlinksInPath().fileSystemPath
         let sourcePath = "\(path)\n\(resolvedPath)".lowercased()
 
         if sourcePath.contains("/setapp/") {
@@ -144,6 +144,12 @@ private extension FileSystemScanner {
             .appending(path: "_MASReceipt", directoryHint: .isDirectory)
             .appending(path: "receipt", directoryHint: .notDirectory)
 
-        return FileManager.default.fileExists(atPath: receiptURL.path())
+        return FileManager.default.fileExists(atPath: receiptURL.fileSystemPath)
+    }
+}
+
+private extension URL {
+    var fileSystemPath: String {
+        path(percentEncoded: false)
     }
 }

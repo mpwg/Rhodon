@@ -63,6 +63,32 @@ struct RhodonTests {
     }
 
     @MainActor
+    @Test func fileSystemScannerKeepsInstallPathsDecoded() async throws {
+        let rootURL = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: rootURL)
+        }
+
+        let appURL = rootURL.appending(
+            path: "Big Mean Folder Machine 2.app",
+            directoryHint: .isDirectory
+        )
+        try makeApplicationBundle(
+            at: appURL,
+            name: "Big Mean Folder Machine 2",
+            bundleIdentifier: "com.example.big-mean-folder-machine",
+            version: "2.43"
+        )
+
+        let applications = try await FileSystemScanner(
+            applicationDirectories: [rootURL]
+        ).scanInstalledApplications()
+
+        #expect(applications.first?.installPath == appURL.path(percentEncoded: false))
+        #expect(applications.first?.installPath.contains("%20") == false)
+    }
+
+    @MainActor
     @Test func fileSystemScannerDetectsMacAppStoreReceipts() async throws {
         let rootURL = try makeTemporaryDirectory()
         defer {
