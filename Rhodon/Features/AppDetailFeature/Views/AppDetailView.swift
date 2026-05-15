@@ -35,9 +35,15 @@ struct AppDetailView: View {
             AppIconView(application: application, size: DSIconSize.appDetail)
 
             VStack(alignment: .leading, spacing: DSSpacing.xs) {
-                Text(application.name)
-                    .font(DSTypography.title)
-                    .foregroundStyle(DSColor.primaryText)
+                HStack(spacing: DSSpacing.sm) {
+                    Text(application.name)
+                        .font(DSTypography.title)
+                        .foregroundStyle(DSColor.primaryText)
+
+                    if application.isIOSApp {
+                        IOSAppPill()
+                    }
+                }
 
                 Text(application.installPath)
                     .font(DSTypography.caption)
@@ -106,6 +112,18 @@ private struct SourcePill: View {
             .padding(.horizontal, DSSpacing.sm)
             .padding(.vertical, DSSpacing.xs)
             .background(DSColor.surface)
+            .clipShape(RoundedRectangle(cornerRadius: DSCornerRadius.sm, style: .continuous))
+    }
+}
+
+private struct IOSAppPill: View {
+    var body: some View {
+        Text("iOS app")
+            .font(DSTypography.captionEmphasized)
+            .foregroundStyle(DSColor.appTint)
+            .padding(.horizontal, DSSpacing.sm)
+            .padding(.vertical, DSSpacing.xs)
+            .background(DSColor.appTint.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: DSCornerRadius.sm, style: .continuous))
     }
 }

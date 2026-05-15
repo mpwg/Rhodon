@@ -166,6 +166,7 @@ struct RhodonTests {
         #expect(applications.first?.bundleIdentifier == "app.alextran.immich")
         #expect(applications.first?.installedSource == .appStore)
         #expect(applications.first?.availableSources == [.appStore])
+        #expect(applications.first?.isIOSApp == true)
     }
 
     @MainActor

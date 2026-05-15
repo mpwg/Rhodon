@@ -9,6 +9,7 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
     let availableSources: [InstallSource]
     let canMigrate: Bool
     let installPath: String
+    let isIOSApp: Bool
 
     init(
         id: String? = nil,
@@ -18,7 +19,8 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
         installedSource: InstallSource,
         availableSources: [InstallSource],
         canMigrate: Bool,
-        installPath: String
+        installPath: String,
+        isIOSApp: Bool = false
     ) {
         self.id = id ?? "\(bundleIdentifier)|\(installPath)"
         self.name = name
@@ -28,5 +30,6 @@ struct InstalledApplication: Identifiable, Codable, Hashable, Sendable {
         self.availableSources = availableSources
         self.canMigrate = canMigrate
         self.installPath = installPath
+        self.isIOSApp = isIOSApp
     }
 }

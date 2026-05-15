@@ -94,6 +94,7 @@ private extension FileSystemScanner {
             homebrewCasks: homebrewCasks
         )
         let availableSources = source == .unknown ? [] : [source]
+        let isIOSApp = isWrappedIOSApplication(appURL)
 
         return InstalledApplication(
             name: name,
@@ -102,7 +103,8 @@ private extension FileSystemScanner {
             installedSource: source,
             availableSources: availableSources,
             canMigrate: false,
-            installPath: appURL.fileSystemPath
+            installPath: appURL.fileSystemPath,
+            isIOSApp: isIOSApp
         )
     }
 
@@ -209,6 +211,10 @@ private extension FileSystemScanner {
         let metadata = readPropertyList(at: metadataURL)
         return stringValue("softwareVersionBundleId", in: metadata) != nil
             || metadata["itemId"] != nil
+    }
+
+    func isWrappedIOSApplication(_ appURL: URL) -> Bool {
+        wrappedIOSApplicationURL(for: appURL) != nil
     }
 
     func wrappedIOSApplicationURL(for appURL: URL) -> URL? {

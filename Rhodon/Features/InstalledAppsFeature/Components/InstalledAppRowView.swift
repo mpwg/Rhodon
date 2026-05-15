@@ -17,6 +17,10 @@ struct InstalledAppRowView: View {
                     if application.canMigrate {
                         MigrationBadge()
                     }
+
+                    if application.isIOSApp {
+                        IOSAppBadge()
+                    }
                 }
 
                 Text(application.bundleIdentifier)
@@ -49,6 +53,18 @@ private struct MigrationBadge: View {
             .padding(.horizontal, DSSpacing.sm)
             .padding(.vertical, DSSpacing.xxs)
             .background(DSColor.positive.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: DSCornerRadius.sm, style: .continuous))
+    }
+}
+
+private struct IOSAppBadge: View {
+    var body: some View {
+        Text("iOS app")
+            .font(DSTypography.captionEmphasized)
+            .foregroundStyle(DSColor.appTint)
+            .padding(.horizontal, DSSpacing.sm)
+            .padding(.vertical, DSSpacing.xxs)
+            .background(DSColor.appTint.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: DSCornerRadius.sm, style: .continuous))
     }
 }
