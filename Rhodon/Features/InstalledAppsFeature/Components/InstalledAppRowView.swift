@@ -5,10 +5,7 @@ struct InstalledAppRowView: View {
 
     var body: some View {
         HStack(spacing: DSSpacing.md) {
-            Image(systemName: "app.fill")
-                .font(DSTypography.title)
-                .foregroundStyle(DSColor.appTint)
-                .frame(width: DSSpacing.xxl)
+            AppIconView(application: application, size: DSIconSize.appRow)
 
             VStack(alignment: .leading, spacing: DSSpacing.xs) {
                 HStack(spacing: DSSpacing.sm) {

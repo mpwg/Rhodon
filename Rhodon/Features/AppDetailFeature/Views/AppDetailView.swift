@@ -32,9 +32,7 @@ struct AppDetailView: View {
 
     private func header(for application: InstalledApplication) -> some View {
         HStack(spacing: DSSpacing.lg) {
-            Image(systemName: "app.fill")
-                .font(DSTypography.title)
-                .foregroundStyle(DSColor.appTint)
+            AppIconView(application: application, size: DSIconSize.appDetail)
 
             VStack(alignment: .leading, spacing: DSSpacing.xs) {
                 Text(application.name)
